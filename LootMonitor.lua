@@ -391,7 +391,7 @@ function LootMonitor:CheckLootCelebration(itemName)
 		if strfind(itemName, name) then
 			DoEmote("CHEER")
 			if DEFAULT_CHAT_FRAME then
-				DEFAULT_CHAT_FRAME:AddMessage("|cFF0070DD[稀有物品]|r: " .. itemName)
+				DEFAULT_CHAT_FRAME:AddMessage("|cFF0070DD[稀有物品]|r " .. itemName)
 			end
 			return true
 		end
