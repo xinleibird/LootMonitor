@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title:|CFF00FF00[|r|CFFDD66DD界面|r|CFF00FF00] 拾取图形提示
+## Notes: 拾取图形提示
+## Author: 阿拉正经人 Croome
+## Version: 1.0
+## SavedVariables: LootMonitorDB
+
+LootMonitor.lua 
