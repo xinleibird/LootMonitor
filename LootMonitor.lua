@@ -43,6 +43,17 @@ local QUALITY_COLORS = {
 	[5] = { 1.00, 0.50, 0.00 },
 }
 
+local LOOT_CELEBRATION_ITEMS = {
+	"正义宝珠",
+	"骨火",
+	"黑莲花",
+	"奥术水晶",
+	"恶魔布",
+	"提布的炽炎长剑",
+	"瑞文戴尔之剑",
+	"克罗之刃",
+}
+
 local COIN_SCALE_FACTOR = 0.8
 local COIN_FADEIN_FACTOR = 1.0
 local COIN_DISPLAY_FACTOR = 1.0
@@ -372,6 +383,16 @@ function LootMonitor:ProcessSystemMessageCN(message)
 	end
 end
 
+function LootMonitor:CheckLootCelebration(itemName)
+	if not itemName then return end
+	for _, name in ipairs(LOOT_CELEBRATION_ITEMS) do
+		if strfind(itemName, name) then
+			DoEmote("CHEER")
+			return true
+		end
+	end
+end
+
 function LootMonitor:AddLootItem(itemData, isNameOnly, quantity, isCoin, gold, silver, copper)
 	if not LootMonitorDB.enabled then
 		return
@@ -454,6 +475,7 @@ function LootMonitor:AddLootItem(itemData, isNameOnly, quantity, isCoin, gold, s
 			self:MoveCoinNotificationToTop(existingNotification)
 		end
 	else
+		self:CheckLootCelebration(itemName)
 		self:CreateLootNotification(itemName, actualQuantity, itemData, isNameOnly, isCoin, gold, silver, copper)
 	end
 end
