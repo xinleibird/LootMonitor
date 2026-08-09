@@ -61,8 +61,8 @@ local COIN_FADEOUT_FACTOR = 1.0
 
 local YOU_RECEIVE_PATTERNS = {
 	"你获得了物品：",
+	"你得到了物品：",
 	"你获得了",
-	"获得物品",
 	"你得到了",
 	"你拾取了",
 	"你制造了",
@@ -384,10 +384,15 @@ function LootMonitor:ProcessSystemMessageCN(message)
 end
 
 function LootMonitor:CheckLootCelebration(itemName)
-	if not itemName then return end
+	if not itemName then
+		return
+	end
 	for _, name in ipairs(LOOT_CELEBRATION_ITEMS) do
 		if strfind(itemName, name) then
 			DoEmote("CHEER")
+			if DEFAULT_CHAT_FRAME then
+				DEFAULT_CHAT_FRAME:AddMessage("|cFF0070DD[稀有物品]|r: " .. itemName)
+			end
 			return true
 		end
 	end
