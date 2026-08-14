@@ -52,6 +52,9 @@ local LOOT_CELEBRATION_ITEMS = {
 	"提布的炽炎长剑",
 	"瑞文戴尔之剑",
 	"克罗之刃",
+	"泰坦合剂",
+	"超级能量合剂",
+	"精炼智慧合剂",
 }
 
 local COIN_SCALE_FACTOR = 0.8
