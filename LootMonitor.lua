@@ -587,15 +587,58 @@ function LootMonitor:RegisterEvents()
 				LootMonitor.initialized = true
 			end
 		elseif event == "CHAT_MSG_LOOT" then
-			LootMonitor:ProcessLootMessageCN(arg1)
+			LootMonitor:QueueMessage("loot", arg1)
 		elseif event == "CHAT_MSG_MONEY" then
-			LootMonitor:ProcessCoinMessage(arg1)
+			LootMonitor:QueueMessage("money", arg1)
 		elseif event == "CHAT_MSG_SYSTEM" then
-			LootMonitor:ProcessSystemMessageCN(arg1)
+			LootMonitor:QueueMessage("system", arg1)
 		elseif event == "PLAYER_LOGOUT" then
 			LootMonitor:SavePosition()
 		end
 	end)
+end
+
+function LootMonitor:QueueMessage(kind, message)
+	if not message then
+		return
+	end
+	if not self.pendingQueue then
+		self.pendingQueue = {}
+	end
+	tinsert(self.pendingQueue, { kind = kind, message = message })
+	self:StartQueueProcessing()
+end
+
+function LootMonitor:StartQueueProcessing()
+	if self.queueFrame then
+		return
+	end
+	local queueFrame = CreateFrame("Frame")
+	self.queueFrame = queueFrame
+	queueFrame:SetScript("OnUpdate", function()
+		LootMonitor:ProcessQueue()
+	end)
+end
+
+function LootMonitor:ProcessQueue()
+	local pendingQueue = self.pendingQueue
+	while pendingQueue and tgetn(pendingQueue) > 0 do
+		local item = tremove(pendingQueue, 1)
+		if item.kind == "loot" then
+			self:ProcessLootMessageCN(item.message)
+		elseif item.kind == "money" then
+			self:ProcessCoinMessage(item.message)
+		elseif item.kind == "system" then
+			self:ProcessSystemMessageCN(item.message)
+		end
+		break
+	end
+	if not pendingQueue or tgetn(pendingQueue) == 0 then
+		if self.queueFrame then
+			self.queueFrame:SetScript("OnUpdate", nil)
+			self.queueFrame = nil
+		end
+	end
 end
 
 function LootMonitor:FindItemInBags(itemName)
@@ -687,6 +730,10 @@ function LootMonitor:RemoveNotification(notification)
 		notification.bgAnimFrame:SetScript("OnUpdate", nil)
 		notification.bgAnimFrame = nil
 	end
+	if notification.totalFrame then
+		notification.totalFrame:SetScript("OnUpdate", nil)
+		notification.totalFrame = nil
+	end
 	if notification.frame then
 		notification.frame:Hide()
 		notification.frame:SetParent(nil)
@@ -719,16 +766,6 @@ function LootMonitor:GetItemQuality(itemLink)
 	if not itemLink then
 		return 0
 	end
-	local _, _, itemID = strfind(itemLink, "item:(%d+):")
-	if itemID then
-		itemID = tonumber(itemID)
-		if itemID then
-			local _, _, quality = GetItemInfo(itemID)
-			if quality and quality >= 0 and quality <= 5 then
-				return quality
-			end
-		end
-	end
 	local _, _, color = strfind(itemLink, "|cff(%x%x%x%x%x%x)")
 	if color then
 		color = strlower(color)
@@ -746,7 +783,65 @@ function LootMonitor:GetItemQuality(itemLink)
 			return 1
 		end
 	end
+	local _, _, itemID = strfind(itemLink, "item:(%d+):")
+	if itemID then
+		itemID = tonumber(itemID)
+		if itemID then
+			local _, _, quality = GetItemInfo(itemID)
+			if quality and quality >= 0 and quality <= 5 then
+				return quality
+			end
+		end
+	end
 	return 1
+end
+
+function LootMonitor:LayoutNotification(notification, showTotal)
+	local iconY = -24
+	local textYOffset
+	if showTotal then
+		textYOffset = 5
+	else
+		textYOffset = -32 - iconY + 8
+	end
+	notification.text:ClearAllPoints()
+	notification.text:SetPoint("LEFT", notification.icon, "RIGHT", 15, textYOffset)
+end
+
+function LootMonitor:ScheduleTotalCount(notification)
+	if notification.totalScheduled then
+		return
+	end
+	if not notification.frame then
+		return
+	end
+	notification.totalScheduled = true
+	local totalFrame = CreateFrame("Frame")
+	notification.totalFrame = totalFrame
+	totalFrame:SetScript("OnUpdate", function()
+		totalFrame:SetScript("OnUpdate", nil)
+		notification.totalScheduled = false
+		notification.totalFrame = nil
+		if not notification.frame then
+			return
+		end
+		local totalCount = self:CountItemInBags(notification.name)
+		if LootMonitorDB.showTotalCount and not notification.isCoin and totalCount > 0 then
+			local fontSize = (LootMonitorDB.fontSize or 14) * 0.5
+			notification.totalText:SetFont("Fonts\\ARKai_T.ttf", fontSize, "OUTLINE")
+			notification.totalText:SetText("(总数: " .. totalCount .. ")")
+			local totalTextWidth = notification.totalText:GetStringWidth()
+			if totalTextWidth > 0 then
+				notification.totalText:SetWidth(totalTextWidth + 5)
+			end
+			notification.totalText:ClearAllPoints()
+			notification.totalText:SetPoint("TOPLEFT", notification.text, "BOTTOMLEFT", 0, -2)
+			self:LayoutNotification(notification, true)
+		else
+			notification.totalText:SetText("")
+			self:LayoutNotification(notification, false)
+		end
+	end)
 end
 
 function LootMonitor:UpdateNotificationText(notification)
@@ -758,18 +853,7 @@ function LootMonitor:UpdateNotificationText(notification)
 	notification.text:SetFont("Fonts\\ARKai_T.ttf", fontSize + 2, "OUTLINE")
 	notification.text:SetText(displayText)
 
-	local showTotal = LootMonitorDB.showTotalCount
-		and not notification.isCoin
-		and self:CountItemInBags(notification.name) > 0
-	local iconY = -24
-	local textYOffset
-	if showTotal then
-		textYOffset = 5
-	else
-		textYOffset = -32 - iconY + 8
-	end
-	notification.text:ClearAllPoints()
-	notification.text:SetPoint("LEFT", notification.icon, "RIGHT", 15, textYOffset)
+	self:LayoutNotification(notification, false)
 
 	local textWidth = notification.text:GetStringWidth()
 	local frameWidth = notification.frame:GetWidth()
@@ -782,19 +866,7 @@ function LootMonitor:UpdateNotificationText(notification)
 	end
 
 	if LootMonitorDB.showTotalCount and not notification.isCoin then
-		local totalCount = self:CountItemInBags(notification.name)
-		if totalCount > 0 then
-			notification.totalText:SetFont("Fonts\\ARKai_T.ttf", fontSize, "OUTLINE")
-			notification.totalText:SetText("(总数: " .. totalCount .. ")")
-			local totalTextWidth = notification.totalText:GetStringWidth()
-			if totalTextWidth > 0 then
-				notification.totalText:SetWidth(totalTextWidth + 5)
-			end
-			notification.totalText:ClearAllPoints()
-			notification.totalText:SetPoint("TOPLEFT", notification.text, "BOTTOMLEFT", 0, -2)
-		else
-			notification.totalText:SetText("")
-		end
+		self:ScheduleTotalCount(notification)
 	else
 		notification.totalText:SetText("")
 	end
