@@ -1025,6 +1025,61 @@ function LootMonitor:StartNotificationAnimation(notification)
 end
 
 function LootMonitor:CreateLootNotification(itemName, quantity, itemData, isNameOnly, isCoin, gold, silver, copper)
+	if not self.pendingCreates then
+		self.pendingCreates = {}
+	end
+	tinsert(self.pendingCreates, {
+		itemName = itemName,
+		quantity = quantity,
+		itemData = itemData,
+		isNameOnly = isNameOnly,
+		isCoin = isCoin,
+		gold = gold,
+		silver = silver,
+		copper = copper,
+	})
+	self:StartCreateProcessor()
+end
+
+function LootMonitor:StartCreateProcessor()
+	if self.createFrame then
+		return
+	end
+	local createFrame = CreateFrame("Frame")
+	self.createFrame = createFrame
+	createFrame:SetScript("OnUpdate", function()
+		LootMonitor:ProcessPendingCreates()
+	end)
+end
+
+function LootMonitor:ProcessPendingCreates()
+	local pendingCreates = self.pendingCreates
+	if not pendingCreates or tgetn(pendingCreates) == 0 then
+		if self.createFrame then
+			self.createFrame:SetScript("OnUpdate", nil)
+			self.createFrame = nil
+		end
+		return
+	end
+	local maxPerTick = 2
+	local processed = 0
+	while tgetn(pendingCreates) > 0 and processed < maxPerTick do
+		local params = tremove(pendingCreates, 1)
+		self:_BuildLootNotification(
+			params.itemName,
+			params.quantity,
+			params.itemData,
+			params.isNameOnly,
+			params.isCoin,
+			params.gold,
+			params.silver,
+			params.copper
+		)
+		processed = processed + 1
+	end
+end
+
+function LootMonitor:_BuildLootNotification(itemName, quantity, itemData, isNameOnly, isCoin, gold, silver, copper)
 	self:CleanupNotifications()
 	local maxNotifications = LootMonitorDB.maxNotifications or self.maxNotifications
 	while tgetn(self.activeNotifications) >= maxNotifications do
