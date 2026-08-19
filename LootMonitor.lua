@@ -734,6 +734,10 @@ function LootMonitor:RemoveNotification(notification)
 		notification.totalFrame:SetScript("OnUpdate", nil)
 		notification.totalFrame = nil
 	end
+	if notification.phase2Frame then
+		notification.phase2Frame:SetScript("OnUpdate", nil)
+		notification.phase2Frame = nil
+	end
 	if notification.frame then
 		notification.frame:Hide()
 		notification.frame:SetParent(nil)
@@ -1061,11 +1065,11 @@ function LootMonitor:ProcessPendingCreates()
 		end
 		return
 	end
-	local maxPerTick = 2
+	local maxPerTick = 1
 	local processed = 0
 	while tgetn(pendingCreates) > 0 and processed < maxPerTick do
 		local params = tremove(pendingCreates, 1)
-		self:_BuildLootNotification(
+		self:_BuildLootNotificationPhase1(
 			params.itemName,
 			params.quantity,
 			params.itemData,
@@ -1079,7 +1083,26 @@ function LootMonitor:ProcessPendingCreates()
 	end
 end
 
-function LootMonitor:_BuildLootNotification(itemName, quantity, itemData, isNameOnly, isCoin, gold, silver, copper)
+function LootMonitor:SchedulePhase2(notificationData)
+	if not notificationData.frame then
+		return
+	end
+	if notificationData.phase2Frame then
+		return
+	end
+	local phase2Frame = CreateFrame("Frame")
+	notificationData.phase2Frame = phase2Frame
+	phase2Frame:SetScript("OnUpdate", function()
+		phase2Frame:SetScript("OnUpdate", nil)
+		notificationData.phase2Frame = nil
+		if not notificationData.frame then
+			return
+		end
+		LootMonitor:_BuildLootNotificationPhase2(notificationData)
+	end)
+end
+
+function LootMonitor:_BuildLootNotificationPhase1(itemName, quantity, itemData, isNameOnly, isCoin, gold, silver, copper)
 	self:CleanupNotifications()
 	local maxNotifications = LootMonitorDB.maxNotifications or self.maxNotifications
 	while tgetn(self.activeNotifications) >= maxNotifications do
@@ -1094,6 +1117,11 @@ function LootMonitor:_BuildLootNotification(itemName, quantity, itemData, isName
 	local notification = CreateFrame("Frame", nil, self.frame)
 	notification:SetWidth(300)
 	notification:SetHeight(64)
+
+	local dbScale = LootMonitorDB.scale
+	local baseScale = (isCoin and (dbScale * COIN_SCALE_FACTOR) or dbScale) * 0.5
+	notification:SetScale(baseScale * 0.8)
+	notification:SetAlpha(0)
 
 	local notificationData = {
 		frame = notification,
@@ -1127,6 +1155,25 @@ function LootMonitor:_BuildLootNotification(itemName, quantity, itemData, isName
 
 	notification:SetPoint("TOP", self.frame, "TOP", 0, yOffset)
 
+	local text = notification:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	local fontSize = (LootMonitorDB.fontSize or 14) * 0.5
+	text:SetFont("Fonts\\ARKai_T.ttf", fontSize + 2, "OUTLINE")
+	text:SetText(itemName)
+	text:SetJustifyH("LEFT")
+	text:SetPoint("LEFT", notification, "LEFT", 110, 0)
+	notificationData.text = text
+
+	self:SchedulePhase2(notificationData)
+end
+
+function LootMonitor:_BuildLootNotificationPhase2(notificationData)
+	if not notificationData.frame then
+		return
+	end
+	local notification = notificationData.frame
+	local isCoin = notificationData.isCoin
+	local itemName = notificationData.name
+
 	local background = notification:CreateTexture(nil, "ARTWORK")
 	background:SetAllPoints(notification)
 	background:SetTexture("Interface\\TransmogFrame\\anim\\loot_frame_xmog_01.blp")
@@ -1149,13 +1196,8 @@ function LootMonitor:_BuildLootNotification(itemName, quantity, itemData, isName
 	end
 	notificationData.icon = icon
 
-	local text = notification:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", icon, "RIGHT", 15, 5)
-	text:SetJustifyH("LEFT")
-	notificationData.text = text
-
 	local totalText = notification:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	totalText:SetPoint("LEFT", text, "RIGHT", 5, 0)
+	totalText:SetPoint("LEFT", notificationData.text, "RIGHT", 5, 0)
 	totalText:SetJustifyH("LEFT")
 	totalText:SetTextColor(0.8, 0.4, 1)
 	notificationData.totalText = totalText
