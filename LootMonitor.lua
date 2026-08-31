@@ -62,15 +62,6 @@ local COIN_FADEIN_FACTOR = 1.0
 local COIN_DISPLAY_FACTOR = 1.0
 local COIN_FADEOUT_FACTOR = 1.0
 
-local YOU_RECEIVE_PATTERNS = {
-	"你获得了物品：",
-	"你得到了物品：",
-	"你获得了",
-	"你得到了",
-	"你拾取了",
-	"你制造了",
-	"你赢得了",
-}
 local BRACKET_OPEN = "%["
 local BRACKET_CLOSE = "%]"
 
@@ -279,50 +270,17 @@ function LootMonitor:ProcessCoinMessage(message)
 	end
 end
 
-function LootMonitor:ProcessLootMessageCN(message)
-	if not message or not LootMonitorDB.enabled then
-		return
-	end
-	if self:IsCoinMessageCN(message) then
-		self:ProcessCoinMessage(message)
-		return
-	end
-	local isReceiveMessage = false
-	for i = 1, tgetn(YOU_RECEIVE_PATTERNS) do
-		if strfind(message, YOU_RECEIVE_PATTERNS[i]) then
-			isReceiveMessage = true
-			break
-		end
-	end
-	if isReceiveMessage then
-		local linkStart = strfind(message, "|c")
-		if linkStart then
-			local hStart = strfind(message, "|H", linkStart)
-			if hStart then
-				local linkEnd = strfind(message, "|r", hStart)
-				if linkEnd then
-					local itemLink = strsub(message, linkStart, linkEnd + 1)
-					if strfind(itemLink, "|Hitem:") then
-						local quantity = self:ExtractQuantityFromMessageCN(message, linkEnd + 2)
-						self:AddLootItem(itemLink, false, quantity)
-						return
-					end
-				end
-			end
-		end
-		local bracketStart = strfind(message, BRACKET_OPEN)
-		if bracketStart then
-			local bracketEnd = strfind(message, BRACKET_CLOSE, bracketStart)
-			if bracketEnd then
-				local itemName = strsub(message, bracketStart + 1, bracketEnd - 1)
-				local quantity = self:ExtractQuantityFromMessageCN(message, bracketEnd + 1)
-				self:AddLootItem(itemName, true, quantity)
-			end
-		end
-	end
+function LootMonitor:IsReceiveMessageCN(message)
+	return strfind(message, "^你获得物品")
+		or strfind(message, "^你获得了")
+		or strfind(message, "^你得到了")
+		or strfind(message, "^你拾取了")
+		or strfind(message, "^你制造了")
+		or strfind(message, "^你获得")
+		or strfind(message, "^你赢得了")
 end
 
-function LootMonitor:ProcessSystemMessageCN(message)
+function LootMonitor:ProcessReceiveMessageCN(message)
 	if not message or not LootMonitorDB.enabled then
 		return
 	end
@@ -330,58 +288,52 @@ function LootMonitor:ProcessSystemMessageCN(message)
 		self:ProcessCoinMessage(message)
 		return
 	end
-	if
-		strfind(message, "获得物品")
-		or strfind(message, "你获得了")
-		or strfind(message, "你得到了")
-		or strfind(message, "你拾取了")
-		or strfind(message, "你制造了")
-		or strfind(message, "获得")
-		or strfind(message, "你赢得了")
-	then
-		local linkStart = strfind(message, "|c")
-		if linkStart then
-			local hStart = strfind(message, "|H", linkStart)
-			if hStart then
-				local linkEnd = strfind(message, "|r", hStart)
-				if linkEnd then
-					local itemLink = strsub(message, linkStart, linkEnd + 1)
-					if strfind(itemLink, "|Hitem:") then
-						local quantity = self:ExtractQuantityFromMessageCN(message, linkEnd + 2)
-						self:AddLootItem(itemLink, false, quantity)
-						return
-					end
+	if not self:IsReceiveMessageCN(message) then
+		return
+	end
+
+	local linkStart = strfind(message, "|c")
+	if linkStart then
+		local hStart = strfind(message, "|H", linkStart)
+		if hStart then
+			local linkEnd = strfind(message, "|r", hStart)
+			if linkEnd then
+				local itemLink = strsub(message, linkStart, linkEnd + 1)
+				if strfind(itemLink, "|Hitem:") then
+					local quantity = self:ExtractQuantityFromMessageCN(message, linkEnd + 2)
+					self:AddLootItem(itemLink, false, quantity)
+					return
 				end
 			end
 		end
+	end
 
-		local bracketStart = strfind(message, "%[")
-		if bracketStart then
-			local bracketEnd = strfind(message, "%]", bracketStart)
-			if bracketEnd then
-				local itemName = strsub(message, bracketStart + 1, bracketEnd - 1)
-				local quantity = self:ExtractQuantityFromMessageCN(message, bracketEnd + 1)
-				self:AddLootItem(itemName, true, quantity)
-				return
-			end
+	local bracketStart = strfind(message, BRACKET_OPEN)
+	if bracketStart then
+		local bracketEnd = strfind(message, BRACKET_CLOSE, bracketStart)
+		if bracketEnd then
+			local itemName = strsub(message, bracketStart + 1, bracketEnd - 1)
+			local quantity = self:ExtractQuantityFromMessageCN(message, bracketEnd + 1)
+			self:AddLootItem(itemName, true, quantity)
+			return
 		end
+	end
 
-		if strfind(message, "你制造了：") then
-			local colonPattern = "你制造了：%[(.-)%]"
-			local _, _, itemName = strfind(message, colonPattern)
-			if itemName then
-				self:AddLootItem(itemName, true, 1)
-				return
-			end
+	if strfind(message, "^你制造了：") then
+		local colonPattern = "^你制造了：%[(.-)%]"
+		local _, _, itemName = strfind(message, colonPattern)
+		if itemName then
+			self:AddLootItem(itemName, true, 1)
+			return
 		end
+	end
 
-		if strfind(message, "你赢得了：") then
-			local winPattern = "你赢得了：%[(.-)%]"
-			local _, _, itemName = strfind(message, winPattern)
-			if itemName then
-				self:AddLootItem(itemName, true, 1)
-				return
-			end
+	if strfind(message, "^你赢得了：") then
+		local winPattern = "^你赢得了：%[(.-)%]"
+		local _, _, itemName = strfind(message, winPattern)
+		if itemName then
+			self:AddLootItem(itemName, true, 1)
+			return
 		end
 	end
 end
@@ -624,12 +576,10 @@ function LootMonitor:ProcessQueue()
 	local pendingQueue = self.pendingQueue
 	while pendingQueue and tgetn(pendingQueue) > 0 do
 		local item = tremove(pendingQueue, 1)
-		if item.kind == "loot" then
-			self:ProcessLootMessageCN(item.message)
-		elseif item.kind == "money" then
+		if item.kind == "money" then
 			self:ProcessCoinMessage(item.message)
-		elseif item.kind == "system" then
-			self:ProcessSystemMessageCN(item.message)
+		else
+			self:ProcessReceiveMessageCN(item.message)
 		end
 		break
 	end
