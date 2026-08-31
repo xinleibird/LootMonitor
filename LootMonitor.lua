@@ -557,7 +557,7 @@ function LootMonitor:QueueMessage(kind, message)
 	if not self.pendingQueue then
 		self.pendingQueue = {}
 	end
-	tinsert(self.pendingQueue, { kind = kind, message = message })
+	tinsert(self.pendingQueue, { kind = kind, message = message, queueTime = gettime() })
 	self:StartQueueProcessing()
 end
 
@@ -574,14 +574,21 @@ end
 
 function LootMonitor:ProcessQueue()
 	local pendingQueue = self.pendingQueue
-	while pendingQueue and tgetn(pendingQueue) > 0 do
-		local item = tremove(pendingQueue, 1)
+	local maxPerTick = 2
+	local queueDelay = 0.2
+	local processed = 0
+	while pendingQueue and tgetn(pendingQueue) > 0 and processed < maxPerTick do
+		local item = pendingQueue[1]
+		if gettime() - item.queueTime < queueDelay then
+			break
+		end
+		tremove(pendingQueue, 1)
 		if item.kind == "money" then
 			self:ProcessCoinMessage(item.message)
 		else
 			self:ProcessReceiveMessageCN(item.message)
 		end
-		break
+		processed = processed + 1
 	end
 	if not pendingQueue or tgetn(pendingQueue) == 0 then
 		if self.queueFrame then
@@ -672,6 +679,10 @@ function LootMonitor:CleanupNotifications()
 end
 
 function LootMonitor:RemoveNotification(notification)
+	if notification.iconSearchFrame then
+		notification.iconSearchFrame:SetScript("OnUpdate", nil)
+		notification.iconSearchFrame = nil
+	end
 	if notification.animFrame then
 		notification.animFrame:SetScript("OnUpdate", nil)
 		notification.animFrame = nil
@@ -835,7 +846,11 @@ function LootMonitor:UpdateNotificationText(notification)
 end
 
 function LootMonitor:ScheduleIconSearch(notification)
+	if notification.iconSearchFrame then
+		return
+	end
 	local searchFrame = CreateFrame("Frame")
+	notification.iconSearchFrame = searchFrame
 	local startTime = gettime()
 	local maxSearchTime = 3.0
 	local searchInterval = 0.2
@@ -852,6 +867,7 @@ function LootMonitor:ScheduleIconSearch(notification)
 				end
 			end
 			searchFrame:SetScript("OnUpdate", nil)
+			notification.iconSearchFrame = nil
 			return
 		end
 		if timeSinceLastSearch < searchInterval then
@@ -862,6 +878,7 @@ function LootMonitor:ScheduleIconSearch(notification)
 		if texture then
 			notification.icon:SetTexture(texture)
 			searchFrame:SetScript("OnUpdate", nil)
+			notification.iconSearchFrame = nil
 		elseif not fallbackUsed and elapsed > 0.5 then
 			local fallbackTexture = self:GetFallbackIcon(notification.name)
 			if fallbackTexture then
@@ -906,37 +923,7 @@ function LootMonitor:StartBackgroundAnimation(notification)
 	if not LootMonitorDB.backgroundAnimation then
 		notification.background:SetTexture("Interface\\TransmogFrame\\anim\\loot_frame_xmog_30.blp")
 		notification.background:SetTexCoord(0, 1, 0, 1)
-		return
 	end
-
-	local animFrame = CreateFrame("Frame")
-	notification.bgAnimFrame = animFrame
-	local startTime = gettime()
-	local frameDuration = BACKGROUND_ANIMATION_FRAME_DURATION
-	local totalFrames = BACKGROUND_ANIMATION_FRAMES
-	local totalDuration = BACKGROUND_ANIMATION_TOTAL_DURATION
-
-	animFrame:SetScript("OnUpdate", function()
-		local elapsed = gettime() - startTime
-
-		if elapsed > totalDuration then
-			local texturePath = "Interface\\TransmogFrame\\anim\\loot_frame_xmog_30.blp"
-			notification.background:SetTexture(texturePath)
-			notification.background:SetTexCoord(0, 1, 0, 1)
-			animFrame:SetScript("OnUpdate", nil)
-			notification.bgAnimFrame = nil
-			return
-		end
-
-		local frameIndex = math.floor(elapsed / frameDuration) + 1
-		if frameIndex > totalFrames then
-			frameIndex = totalFrames
-		end
-
-		local texturePath = strformat("Interface\\TransmogFrame\\anim\\loot_frame_xmog_%02d.blp", frameIndex)
-		notification.background:SetTexture(texturePath)
-		notification.background:SetTexCoord(0, 1, 0, 1)
-	end)
 end
 
 function LootMonitor:StartNotificationAnimation(notification)
@@ -950,10 +937,25 @@ function LootMonitor:StartNotificationAnimation(notification)
 	local fadeInTime = notification.isCoin and (dbFadeIn * COIN_FADEIN_FACTOR) or dbFadeIn
 	local displayTime = notification.isCoin and (dbDisplay * COIN_DISPLAY_FACTOR) or dbDisplay
 	local fadeOutTime = notification.isCoin and (dbFadeOut * COIN_FADEOUT_FACTOR) or dbFadeOut
+	local bgEnabled = LootMonitorDB.backgroundAnimation and not notification.isCoin
+	local bgFrameDuration = BACKGROUND_ANIMATION_FRAME_DURATION
+	local bgTotalFrames = BACKGROUND_ANIMATION_FRAMES
+	local bgTotalDuration = BACKGROUND_ANIMATION_TOTAL_DURATION
 	notification.frame:SetAlpha(0)
 	notification.frame:SetScale(baseScale * 0.8)
 	animFrame:SetScript("OnUpdate", function()
 		local elapsed = gettime() - notification.startTime
+
+		if bgEnabled and elapsed <= bgTotalDuration then
+			local frameIndex = math.floor(elapsed / bgFrameDuration) + 1
+			if frameIndex > bgTotalFrames then
+				frameIndex = bgTotalFrames
+			end
+			local texturePath = strformat("Interface\\TransmogFrame\\anim\\loot_frame_xmog_%02d.blp", frameIndex)
+			notification.background:SetTexture(texturePath)
+			notification.background:SetTexCoord(0, 1, 0, 1)
+		end
+
 		if elapsed < fadeInTime then
 			local progress = elapsed / fadeInTime
 			local alpha = progress
@@ -991,6 +993,7 @@ function LootMonitor:CreateLootNotification(itemName, quantity, itemData, isName
 		gold = gold,
 		silver = silver,
 		copper = copper,
+		createTime = gettime(),
 	})
 	self:StartCreateProcessor()
 end
@@ -1015,10 +1018,15 @@ function LootMonitor:ProcessPendingCreates()
 		end
 		return
 	end
+	local createDelay = 0.1
 	local maxPerTick = 1
 	local processed = 0
 	while tgetn(pendingCreates) > 0 and processed < maxPerTick do
-		local params = tremove(pendingCreates, 1)
+		local params = pendingCreates[1]
+		if gettime() - params.createTime < createDelay then
+			break
+		end
+		tremove(pendingCreates, 1)
 		self:_BuildLootNotificationPhase1(
 			params.itemName,
 			params.quantity,
@@ -1163,7 +1171,16 @@ function LootMonitor:_BuildLootNotificationPhase2(notificationData)
 
 	self:StartNotificationAnimation(notificationData)
 	if not isCoin then
-		self:ScheduleIconSearch(notificationData)
+		local texture = self:FindItemTextureInBags(itemName)
+		if texture then
+			icon:SetTexture(texture)
+		else
+			local fallback = self:GetFallbackIcon(itemName)
+			if fallback then
+				icon:SetTexture(fallback)
+			end
+			self:ScheduleIconSearch(notificationData)
+		end
 	end
 end
 
