@@ -55,6 +55,7 @@ local LOOT_CELEBRATION_ITEMS = {
 	"泰坦合剂",
 	"超级能量合剂",
 	"精炼智慧合剂",
+	"褪色的梦境碎片",
 }
 
 local COIN_SCALE_FACTOR = 0.8
@@ -1060,7 +1061,16 @@ function LootMonitor:SchedulePhase2(notificationData)
 	end)
 end
 
-function LootMonitor:_BuildLootNotificationPhase1(itemName, quantity, itemData, isNameOnly, isCoin, gold, silver, copper)
+function LootMonitor:_BuildLootNotificationPhase1(
+	itemName,
+	quantity,
+	itemData,
+	isNameOnly,
+	isCoin,
+	gold,
+	silver,
+	copper
+)
 	self:CleanupNotifications()
 	local maxNotifications = LootMonitorDB.maxNotifications or self.maxNotifications
 	while tgetn(self.activeNotifications) >= maxNotifications do
