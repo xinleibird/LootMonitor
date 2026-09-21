@@ -779,7 +779,7 @@ function LootMonitor:ScheduleTotalCount(notification)
 	if notification.totalScheduled then
 		return
 	end
-	if not notification.frame then
+	if not notification.frame or not notification.totalText then
 		return
 	end
 	notification.totalScheduled = true
@@ -812,6 +812,9 @@ function LootMonitor:ScheduleTotalCount(notification)
 end
 
 function LootMonitor:UpdateNotificationText(notification)
+	if not notification.icon or not notification.text or not notification.frame then
+		return
+	end
 	local displayText = notification.name
 	if notification.count > 1 then
 		displayText = displayText .. " x" .. notification.count
